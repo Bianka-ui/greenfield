@@ -3,7 +3,7 @@ import { nodeFDConnectionSetup } from 'xtsb'
 import { ClientEntry, NativeCompositorSession } from './NativeCompositorSession'
 import { equalValueExternal, setupXWayland, teardownXWayland } from 'westfield-proxy'
 import { createReadStream } from 'fs'
-import { Channel, createXWMDataChannel } from './Channel'
+import { Channel, createXWMDataChannel } from './com'
 
 const logger = createLogger('xwayland')
 const textEncoder = new TextEncoder()
@@ -55,10 +55,7 @@ export class XWaylandSession {
         return
       }
 
-      const xwmDataChannel = createXWMDataChannel(
-        this.nativeCompositorSession.peerConnectionState,
-        xWaylandClient.clientId,
-      )
+      const xwmDataChannel = createXWMDataChannel(xWaylandClient.clientId)
       this.upsertXWMConnection(xwmDataChannel, wmFd).catch((e: any) => {
         logger.error(`\tname: ${e.name} message: ${e.message} text: ${e.text}`)
         logger.error('error object stack: ')

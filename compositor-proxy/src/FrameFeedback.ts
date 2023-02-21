@@ -1,6 +1,6 @@
 import { destroyWlResourceSilently, flush, sendEvents } from 'westfield-proxy'
 import { performance } from 'perf_hooks'
-import type { Channel } from './Channel'
+import type { Channel } from './com'
 
 let activeFeedbackClockInterval = 16.667
 let feedbackClockTimer: NodeJS.Timer | undefined

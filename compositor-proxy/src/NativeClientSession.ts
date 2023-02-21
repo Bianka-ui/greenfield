@@ -42,7 +42,7 @@ import {
   setWireMessageEndCallback,
 } from 'westfield-proxy'
 import { incrementAndGetNextBufferSerial, ProxyBuffer } from './ProxyBuffer'
-import type { Channel } from './Channel'
+import type { Channel } from './com'
 import wl_surface_interceptor from './@types/protocol/wl_surface_interceptor'
 
 const logger = createLogger('native-client-session')
@@ -161,7 +161,6 @@ export class NativeClientSession {
 
     const messageInterceptors: Record<number, any> = {}
     const userData: wl_surface_interceptor['userData'] = {
-      peerConnectionState: nativeCompositorSession.peerConnectionState,
       protocolChannel: this.protocolDataChannel,
       drmContext: nativeCompositorSession.drmContext,
       messageInterceptors,
@@ -231,7 +230,7 @@ export class NativeClientSession {
     getServerObjectIdsBatch(this.wlClient, idsReply.subarray(1))
     // out-of-band w. opcode 6
     idsReply[0] = 6
-    if (this.protocolDataChannel.readyState === 'open') {
+    if (this.protocolDataChannel.isOpen) {
       this.protocolDataChannel.send(Buffer.from(idsReply.buffer, idsReply.byteOffset, idsReply.byteLength))
     } else {
       this.outboundMessages.push(Buffer.from(idsReply.buffer, idsReply.byteOffset, idsReply.byteLength))
@@ -337,7 +336,7 @@ export class NativeClientSession {
       offset += pendingWireMessage.length
     }
 
-    if (this.protocolDataChannel.readyState === 'open') {
+    if (this.protocolDataChannel.isOpen) {
       // 1 === 'open'
       logger.debug('Client message send over protocol channel.')
       this.protocolDataChannel.send(Buffer.from(sendBuffer.buffer, sendBuffer.byteOffset, sendBuffer.byteLength))

@@ -22,14 +22,13 @@ import { createLogger } from './Logger'
 import wlSurfaceInterceptor from './protocol/wl_surface_interceptor'
 import { FrameFeedback } from './FrameFeedback'
 import { incrementAndGetNextBufferSerial, ProxyBuffer } from './ProxyBuffer'
-import { Channel, createFeedbackChannel, createFrameDataChannel } from './Channel'
+import { Channel, createFeedbackChannel, createFrameDataChannel } from './com'
 
 const logger = createLogger('surface-buffer-encoding')
 
 function ensureFrameFeedback(wlSurfaceInterceptor: wlSurfaceInterceptor): FrameFeedback {
   if (wlSurfaceInterceptor.frameFeedback === undefined) {
     const feedbackChannel = createFeedbackChannel(
-      wlSurfaceInterceptor.userData.peerConnectionState,
       wlSurfaceInterceptor.userData.nativeClientSession.id,
       wlSurfaceInterceptor.id,
     )
@@ -48,10 +47,7 @@ function ensureFrameFeedback(wlSurfaceInterceptor: wlSurfaceInterceptor): FrameF
 
 function ensureFrameDataChannel(wlSurfaceInterceptor: wlSurfaceInterceptor): Channel {
   if (wlSurfaceInterceptor.frameDataChannel === undefined) {
-    wlSurfaceInterceptor.frameDataChannel = createFrameDataChannel(
-      wlSurfaceInterceptor.userData.peerConnectionState,
-      wlSurfaceInterceptor.userData.nativeClientSession.id,
-    )
+    wlSurfaceInterceptor.frameDataChannel = createFrameDataChannel(wlSurfaceInterceptor.userData.nativeClientSession.id)
     wlSurfaceInterceptor.userData.nativeClientSession.destroyListeners.push(() => {
       wlSurfaceInterceptor.frameDataChannel.close()
     })

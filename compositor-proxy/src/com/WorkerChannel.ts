@@ -1,7 +1,7 @@
-import { Kcp } from './kcp'
-import { DataChannelDesc, FeedbackDataChannelDesc } from './SignalingController'
-import { PeerConnectionState } from './CompositorProxySession'
-import { RTCDataChannel, RTCDataChannelInit, RTCDataChannelState, RTCErrorEvent, RTCPeerConnection } from '@koush/wrtc'
+import { RTCDataChannel, RTCDataChannelInit, RTCErrorEvent, RTCPeerConnection } from '@koush/wrtc'
+import { Kcp } from '../kcp'
+import { Channel, DataChannelDesc, FeedbackDataChannelDesc } from './Com'
+import { PeerConnectionState } from './ComWorker'
 
 const MAX_BUFFERED_AMOUNT = 1048576
 const MTU = 1200 // webrtc datachannel MTU
@@ -11,26 +11,11 @@ const RCV_WINDOW_SIZE = 128
 const dataChannelConfig: RTCDataChannelInit = {
   ordered: false,
   maxRetransmits: 0,
+  maxPacketLifeTime: 0,
 }
 
 function createDataChannel(peerConnection: RTCPeerConnection, desc: DataChannelDesc): RTCDataChannel {
   return peerConnection.createDataChannel(JSON.stringify(desc), dataChannelConfig)
-}
-
-export interface Channel {
-  send(buffer: ArrayBufferView): void
-
-  close(): void
-
-  readyState: RTCDataChannelState
-
-  onOpen(cb: () => void): void
-
-  onClose(cb: () => void): void
-
-  onError(cb: (err: RTCErrorEvent) => void): void
-
-  onMessage(cb: (msg: Buffer) => void): void
 }
 
 function createARQChannel(
@@ -144,8 +129,8 @@ export class SimpleChannel implements Channel {
     )
   }
 
-  get readyState(): RTCDataChannelState {
-    return this.dataChannel.readyState
+  get isOpen(): boolean {
+    return this.dataChannel.readyState === 'open'
   }
 
   send(buffer: ArrayBufferView): void {
@@ -186,6 +171,17 @@ export class SimpleChannel implements Channel {
   }
 }
 
+const checkInterval = 20
+const checkListeners: (() => void)[] = []
+
+function check() {
+  for (const checkListener of checkListeners) {
+    checkListener()
+  }
+}
+
+setInterval(check, checkInterval)
+
 export class ARQChannel implements Channel {
   private kcp?: Kcp
   private openCb?: () => void
@@ -195,7 +191,7 @@ export class ARQChannel implements Channel {
   public readonly resetListener = (newPeerConnection: RTCPeerConnection) => {
     this.resetDataChannel(newPeerConnection)
   }
-  private checkInterval?: NodeJS.Timer
+  private checkListener?: () => void
 
   constructor(
     private readonly peerConnectionState: PeerConnectionState,
@@ -224,9 +220,12 @@ export class ARQChannel implements Channel {
       'close',
       () => {
         if (this.kcp) {
-          if (this.checkInterval) {
-            clearInterval(this.checkInterval)
-            this.checkInterval = undefined
+          if (this.checkListener) {
+            const idx = checkListeners.indexOf(this.checkListener)
+            if (idx >= 0) {
+              checkListeners.splice(idx, 1)
+            }
+            this.checkListener = undefined
           }
           this.kcp.release()
           this.kcp = undefined
@@ -246,6 +245,7 @@ export class ARQChannel implements Channel {
   }
 
   send(buffer: Buffer) {
+    const start = Date.now()
     // TODO forward error correction: https://github.com/ronomon/reed-solomon#readme & https://github.com/skywind3000/kcp/wiki/KCP-Best-Practice-EN
     if (this.kcp) {
       this.kcp.send(buffer)
@@ -254,9 +254,10 @@ export class ARQChannel implements Channel {
   }
 
   private check(kcp: Kcp) {
-    this.checkInterval = setInterval(() => {
+    this.checkListener = () => {
       kcp.update()
-    }, 20)
+    }
+    checkListeners.push(this.checkListener)
   }
 
   close(): void {
@@ -269,8 +270,8 @@ export class ARQChannel implements Channel {
     }
   }
 
-  get readyState(): RTCDataChannelState {
-    return this.dataChannel.readyState
+  get isOpen(): boolean {
+    return this.dataChannel.readyState === 'open'
   }
 
   private initKcp(dataChannel: RTCDataChannel) {
@@ -280,10 +281,11 @@ export class ARQChannel implements Channel {
     const kcp = new Kcp(dataChannel.id, this)
     kcp.setMtu(MTU) // webrtc datachannel MTU
     kcp.setWndSize(SND_WINDOW_SIZE, RCV_WINDOW_SIZE)
-    kcp.setNoDelay(1, 20, 2, 1)
+    kcp.setNoDelay(1, checkInterval, 2, 1)
     kcp.setOutput((data, len) => {
-      if (dataChannel.readyState === 'open' && dataChannel.bufferedAmount <= MAX_BUFFERED_AMOUNT) {
+      if (len > 0 && dataChannel.readyState === 'open' && dataChannel.bufferedAmount <= MAX_BUFFERED_AMOUNT) {
         dataChannel.send(data.subarray(0, len))
+        kcp.update()
       }
     })
 
@@ -294,7 +296,7 @@ export class ARQChannel implements Channel {
       // TODO forward error correction: https://github.com/ronomon/reed-solomon#readme & https://github.com/skywind3000/kcp/wiki/KCP-Best-Practice-EN
       kcp.input(Buffer.from(message.data as ArrayBuffer), true, false)
       let size = -1
-      while ((size = kcp.peekSize()) >= 0) {
+      while ((size = kcp.peekSize()) > 0) {
         const buffer = Buffer.alloc(size)
         const len = kcp.recv(buffer)
         if (len >= 0 && this.msgCb) {

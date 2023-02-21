@@ -2,7 +2,7 @@ import { Encoder } from '../../encoding/Encoder'
 import { FrameFeedback } from '../../FrameFeedback'
 import { NativeClientSession } from '../../NativeClientSession'
 import { MessageDestination } from '../../../../../westfield/server/node/proxy'
-import type { Channel } from '../../Channel'
+import type { Channel } from '../../com/Com'
 import type { PeerConnectionState } from '../../CompositorProxySession'
 
 export default class wl_surface_interceptor {
@@ -23,7 +23,6 @@ export default class wl_surface_interceptor {
   encoder: Encoder
   userData: {
     protocolChannel: Channel
-    peerConnectionState: PeerConnectionState
     drmContext: unknown
     messageInterceptors: Record<number, any>
     nativeClientSession: NativeClientSession
