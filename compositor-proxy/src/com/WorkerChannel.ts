@@ -1,5 +1,5 @@
-import { RTCDataChannel, RTCDataChannelInit, RTCErrorEvent, RTCPeerConnection } from '@koush/wrtc'
-import { Kcp } from '../kcp'
+import { RTCDataChannel, RTCPeerConnection } from 'werift'
+import { Kcp } from './kcp'
 import { Channel, DataChannelDesc, FeedbackDataChannelDesc } from './Com'
 import { PeerConnectionState } from './ComWorker'
 
@@ -8,7 +8,7 @@ const MTU = 1200 // webrtc datachannel MTU
 const SND_WINDOW_SIZE = 1024
 const RCV_WINDOW_SIZE = 128
 
-const dataChannelConfig: RTCDataChannelInit = {
+const dataChannelConfig: Parameters<RTCPeerConnection['createDataChannel']>[1] = {
   ordered: false,
   maxRetransmits: 0,
   maxPacketLifeTime: 0,
@@ -75,9 +75,9 @@ export function createFeedbackChannel(
 
 export class SimpleChannel implements Channel {
   private openCb?: () => void
-  private msgCb?: (msg: Buffer) => void
+  private msgCb?: (msg: Uint8Array) => void
   private closeCb?: () => void
-  private errorCb?: (err: RTCErrorEvent) => void
+  private errorCb?: (err: Error) => void
   public readonly resetListener = (newPeerConnection: RTCPeerConnection) => {
     this.resetDataChannel(newPeerConnection)
   }
@@ -91,51 +91,33 @@ export class SimpleChannel implements Channel {
   }
 
   private addDataChannelListeners(dataChannel: RTCDataChannel) {
-    dataChannel.binaryType = 'arraybuffer'
     if (dataChannel.readyState === 'open') {
       this.openCb?.()
     } else {
-      dataChannel.addEventListener(
-        'open',
-        () => {
-          this.openCb?.()
-        },
-        { passive: true, once: true },
-      )
+      dataChannel.onopen = () => {
+        this.openCb?.()
+      }
     }
-    dataChannel.addEventListener(
-      'close',
-      () => {
-        this.closeCb?.()
-      },
-      { passive: true, once: true },
-    )
-    dataChannel.addEventListener(
-      'error',
-      // @ts-ignore
-      (err: RTCErrorEvent) => {
-        this.errorCb?.(err)
-      },
-      { passive: true },
-    )
-    dataChannel.addEventListener(
-      'message',
-      (ev) => {
-        if (this.msgCb) {
-          this.msgCb(Buffer.from(ev.data as ArrayBuffer))
-        }
-      },
-      { passive: true },
-    )
+    dataChannel.onclose = () => {
+      this.closeCb?.()
+    }
+    dataChannel.onerror = (err) => {
+      this.errorCb?.(err.error)
+    }
+    dataChannel.onmessage = (ev) => {
+      if (this.msgCb) {
+        this.msgCb(ev.data as Buffer)
+      }
+    }
   }
 
   get isOpen(): boolean {
     return this.dataChannel.readyState === 'open'
   }
 
-  send(buffer: ArrayBufferView): void {
+  send(buffer: Uint8Array): void {
     if (this.dataChannel.readyState === 'open' && this.dataChannel.bufferedAmount <= MAX_BUFFERED_AMOUNT) {
-      this.dataChannel.send(buffer)
+      this.dataChannel.send(Buffer.from(buffer.buffer, buffer.byteOffset, buffer.byteLength))
     }
   }
 
@@ -153,11 +135,11 @@ export class SimpleChannel implements Channel {
     this.closeCb = cb
   }
 
-  onError(cb: (err: RTCErrorEvent) => void): void {
+  onError(cb: (err: Error) => void): void {
     this.errorCb = cb
   }
 
-  onMessage(cb: (msg: Buffer) => void): void {
+  onMessage(cb: (msg: Uint8Array) => void): void {
     this.msgCb = cb
   }
 
@@ -171,7 +153,7 @@ export class SimpleChannel implements Channel {
   }
 }
 
-const checkInterval = 20
+const checkInterval = 30
 const checkListeners: (() => void)[] = []
 
 function check() {
@@ -186,8 +168,8 @@ export class ARQChannel implements Channel {
   private kcp?: Kcp
   private openCb?: () => void
   private closeCb?: () => void
-  private errorCb?: (err: RTCErrorEvent) => void
-  private msgCb?: (event: Buffer) => void
+  private errorCb?: (err: Error) => void
+  private msgCb?: (event: Uint8Array) => void
   public readonly resetListener = (newPeerConnection: RTCPeerConnection) => {
     this.resetDataChannel(newPeerConnection)
   }
@@ -202,53 +184,38 @@ export class ARQChannel implements Channel {
   }
 
   private addDataChannelListeners(dataChannel: RTCDataChannel) {
-    dataChannel.binaryType = 'arraybuffer'
     if (dataChannel.readyState === 'open') {
       this.initKcp(dataChannel)
       this.openCb?.()
     } else {
-      dataChannel.addEventListener(
-        'open',
-        () => {
-          this.initKcp(dataChannel)
-          this.openCb?.()
-        },
-        { passive: true, once: true },
-      )
+      dataChannel.onopen = () => {
+        this.initKcp(dataChannel)
+        this.openCb?.()
+      }
     }
-    dataChannel.addEventListener(
-      'close',
-      () => {
-        if (this.kcp) {
-          if (this.checkListener) {
-            const idx = checkListeners.indexOf(this.checkListener)
-            if (idx >= 0) {
-              checkListeners.splice(idx, 1)
-            }
-            this.checkListener = undefined
+    dataChannel.onclose = () => {
+      if (this.kcp) {
+        if (this.checkListener) {
+          const idx = checkListeners.indexOf(this.checkListener)
+          if (idx >= 0) {
+            checkListeners.splice(idx, 1)
           }
-          this.kcp.release()
-          this.kcp = undefined
+          this.checkListener = undefined
         }
-        this.closeCb?.()
-      },
-      { passive: true, once: true },
-    )
-    dataChannel.addEventListener(
-      'error',
-      // @ts-ignore
-      (err: RTCErrorEvent) => {
-        this.errorCb?.(err)
-      },
-      { passive: true },
-    )
+        this.kcp.release()
+        this.kcp = undefined
+      }
+      this.closeCb?.()
+    }
+    dataChannel.onerror = (err) => {
+      this.errorCb?.(err.error)
+    }
   }
 
-  send(buffer: Buffer) {
-    const start = Date.now()
+  send(buffer: Uint8Array) {
     // TODO forward error correction: https://github.com/ronomon/reed-solomon#readme & https://github.com/skywind3000/kcp/wiki/KCP-Best-Practice-EN
     if (this.kcp) {
-      this.kcp.send(buffer)
+      this.kcp.send(Buffer.from(buffer.buffer, buffer.byteOffset, buffer.byteLength))
       this.kcp.flush(false)
     }
   }
@@ -289,21 +256,21 @@ export class ARQChannel implements Channel {
       }
     })
 
-    dataChannel.addEventListener('message', (message) => {
+    dataChannel.onmessage = (message) => {
       if (kcp.snd_buf === undefined) {
         return
       }
       // TODO forward error correction: https://github.com/ronomon/reed-solomon#readme & https://github.com/skywind3000/kcp/wiki/KCP-Best-Practice-EN
-      kcp.input(Buffer.from(message.data as ArrayBuffer), true, false)
+      kcp.input(message.data as Buffer, true, false)
       let size = -1
       while ((size = kcp.peekSize()) > 0) {
         const buffer = Buffer.alloc(size)
         const len = kcp.recv(buffer)
         if (len >= 0 && this.msgCb) {
-          this.msgCb(buffer.subarray(0, size))
+          this.msgCb(buffer.subarray(0, len))
         }
       }
-    })
+    }
 
     this.check(kcp)
     this.kcp = kcp
@@ -317,11 +284,11 @@ export class ARQChannel implements Channel {
     this.closeCb = cb
   }
 
-  onError(cb: (err: RTCErrorEvent) => void): void {
+  onError(cb: (err: Error) => void): void {
     this.errorCb = cb
   }
 
-  onMessage(cb: (msg: Buffer) => void): void {
+  onMessage(cb: (msg: Uint8Array) => void): void {
     this.msgCb = cb
   }
 

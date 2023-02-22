@@ -7,7 +7,6 @@ import type {
   Signaling,
 } from './Com'
 import { Worker } from 'node:worker_threads'
-import { RTCErrorEvent } from '@koush/wrtc'
 import { isChannelMessage, isSignalingMessage, SignalingMessage } from './Com'
 
 const comWorker = new Worker('./src/com/ComWorker')
@@ -16,7 +15,7 @@ function handleMessage(message: ChannelMessage<any> | SignalingMessage<any>) {
   if (isChannelMessage(message, 'onMessage')) {
     proxyChannels[message.channelId].handleChannelOnMessage(message.data)
   } else if (isChannelMessage(message, 'onClose')) {
-    proxyChannels[message.channelId].handleChannelOnClose()
+    proxyChannels[message.channelId]?.handleChannelOnClose()
   } else if (isChannelMessage(message, 'onOpen')) {
     proxyChannels[message.channelId].handleChannelOnOpen()
   } else if (isChannelMessage(message, 'onError')) {
@@ -49,7 +48,7 @@ export const signaling: Signaling = {
       type: 'message',
       data,
     }
-    comWorker.postMessage(signalingMessage)
+    comWorker.postMessage(signalingMessage, [data.buffer])
   },
   onOpenAck(ackMessage: Uint8Array): void {
     /* noop */
@@ -77,7 +76,7 @@ function createChannelMessage(channelId: number, data: DataChannelDesc): Channel
   }
 }
 
-function createSendMessage(channelId: number, data: Buffer): ChannelMessage<'send'> {
+function createSendMessage(channelId: number, data: Uint8Array): ChannelMessage<'send'> {
   return {
     channelId,
     data,
@@ -100,9 +99,9 @@ export class ProxyChannel implements Channel {
   isOpen = false
 
   private closeCb?: () => void
-  private messageCb?: (msg: Buffer) => void
+  private messageCb?: (msg: Uint8Array) => void
   private openCb?: () => void
-  private errorCb?: (err: RTCErrorEvent) => void
+  private errorCb?: (err: Error) => void
 
   constructor(desc: DataChannelDesc, private readonly channelId = nextChannelId++) {
     proxyChannels[channelId] = this
@@ -120,11 +119,11 @@ export class ProxyChannel implements Channel {
     // TODO remove from proxyChannels
   }
 
-  onError(cb: (err: RTCErrorEvent) => void): void {
+  onError(cb: (err: Error) => void): void {
     this.errorCb = cb
   }
 
-  onMessage(cb: (msg: Buffer) => void): void {
+  onMessage(cb: (msg: Uint8Array) => void): void {
     this.messageCb = cb
   }
 
@@ -132,8 +131,8 @@ export class ProxyChannel implements Channel {
     this.openCb = cb
   }
 
-  send(buffer: Buffer): void {
-    comWorker.postMessage(createSendMessage(this.channelId, buffer), [buffer])
+  send(buffer: Uint8Array): void {
+    comWorker.postMessage(createSendMessage(this.channelId, buffer), [buffer.buffer])
   }
 
   handleChannelOnMessage(data: ChannelMessageTypeMap['onMessage']) {

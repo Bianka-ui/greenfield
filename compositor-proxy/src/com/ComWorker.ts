@@ -1,7 +1,6 @@
 import { parentPort } from 'node:worker_threads'
 import type { Channel, ChannelMessage, FeedbackDataChannelDesc, SignalingMessage } from './Com'
 import { isChannelMessage, isSignalingMessage, Signaling } from './Com'
-import { RTCPeerConnection } from '@koush/wrtc'
 import { config } from '../config'
 import {
   createFeedbackChannel,
@@ -9,8 +8,8 @@ import {
   createProtocolChannel,
   createXWMDataChannel,
 } from './WorkerChannel'
-
 import { createSignaling } from './Signaling'
+import { RTCPeerConnection } from 'werift'
 
 if (parentPort === null) {
   throw new Error('no parent port.')
@@ -28,13 +27,14 @@ export type PeerConnectionState = {
 }
 
 function createPeerConnection(): RTCPeerConnection {
-  return new RTCPeerConnection({
-    iceServers: config.server.webrtc.iceServers,
-    portRange: {
-      min: config.server.webrtc.portRangeMin ?? 0,
-      max: config.server.webrtc.portRangeMax ?? 65535,
-    },
-  })
+  // return new RTCPeerConnection({
+  //   iceServers: config.server.webrtc.iceServers,
+  //   portRange: {
+  //     min: config.server.webrtc.portRangeMin ?? 0,
+  //     max: config.server.webrtc.portRangeMax ?? 65535,
+  //   },
+  // })
+  return new RTCPeerConnection()
 }
 
 const peerConnectionState: PeerConnectionState = {
@@ -74,6 +74,14 @@ function setupChannel(channel: Channel, channelId: number): Channel {
       channelId,
     }
     parent.postMessage(channelOnOpen)
+  })
+  channel.onMessage((msg) => {
+    const channelOnMessage: ChannelMessage<'onMessage'> = {
+      type: 'onMessage',
+      data: msg,
+      channelId,
+    }
+    parent.postMessage(channelOnMessage, [channelOnMessage.data.buffer])
   })
 
   return channel
@@ -120,14 +128,14 @@ signaling.onOpenAck = (ackMessage) => {
     type: 'onOpenAck',
     data: ackMessage,
   }
-  parent.postMessage(signalingOnOpenAck)
+  parent.postMessage(signalingOnOpenAck, [ackMessage.buffer])
 }
 signaling.onSend = (sendBuffer) => {
   const signalingOnSend: SignalingMessage<'onSend'> = {
     type: 'onSend',
     data: sendBuffer,
   }
-  parent.postMessage(signalingOnSend, [signalingOnSend.data])
+  parent.postMessage(signalingOnSend, [signalingOnSend.data.buffer])
 }
 signaling.onResetPeerConnection = (killAllClients) => {
   const signalingOnResetPeerConnection: SignalingMessage<'onResetPeerConnection'> = {
@@ -141,7 +149,7 @@ function handleMessage(message: ChannelMessage<any> | SignalingMessage<any>) {
   if (isChannelMessage(message, 'send')) {
     channels[message.channelId].send(message.data)
   } else if (isChannelMessage(message, 'close')) {
-    channels[message.channelId].close()
+    channels[message.channelId]?.close()
   } else if (isChannelMessage(message, 'create')) {
     handleChannelCreate(message)
   } else if (isSignalingMessage(message, 'message')) {

@@ -2,11 +2,12 @@ import { destroyWlResourceSilently, flush, sendEvents } from 'westfield-proxy'
 import { performance } from 'perf_hooks'
 import type { Channel } from './com'
 
-let activeFeedbackClockInterval = 16.667
+let activeFeedbackClockInterval = 33
 let feedbackClockTimer: NodeJS.Timer | undefined
 let feedbackClockQueue: ((time: number) => void)[] = []
 
 function configureFrameFeedbackClock(interval: number) {
+  console.log(`reconfiguring with interval: ${interval}`)
   if (feedbackClockTimer) {
     clearInterval(feedbackClockTimer)
     feedbackClockTimer = undefined
@@ -38,8 +39,9 @@ export class FrameFeedback {
     private clientRefreshInterval = 16.667,
   ) {
     feedbackChannel.onMessage((buffer) => {
-      const refreshInterval = buffer.readUInt16LE()
-      const avgDuration = buffer.readUInt16LE(2)
+      const data = Buffer.from(buffer, buffer.byteOffset, buffer.byteLength)
+      const refreshInterval = data.readUInt16LE(0)
+      const avgDuration = data.readUInt16LE(2)
       this.updateDelay(refreshInterval, avgDuration)
     })
   }
@@ -49,8 +51,14 @@ export class FrameFeedback {
   }
 
   commitNotify(frameCallbacksIds: number[], isDestroyed: () => boolean): void {
-    const clockQueue =
-      performance.now() - this.clientFeedbackTimestamp > 1500 ? this.parkedFeedbackClockQueue : feedbackClockQueue
+    let clockQueue: ((time: number) => void)[]
+    if (performance.now() - this.clientFeedbackTimestamp > 2500) {
+      console.debug('using parked feedback clock queue')
+      clockQueue = this.parkedFeedbackClockQueue
+    } else {
+      // console.debug('using feedback clock queue')
+      clockQueue = feedbackClockQueue
+    }
     clockQueue.push((time) => {
       if (isDestroyed()) {
         return
@@ -60,19 +68,19 @@ export class FrameFeedback {
   }
 
   private tuneFrameRedrawInterval() {
-    const slowestClockInterval = Math.max(
-      this.serverProcessingDuration,
-      this.clientProcessingDuration,
-      this.clientRefreshInterval,
-    )
-
-    if (
-      (slowestClockInterval < 17 && Math.abs(slowestClockInterval - activeFeedbackClockInterval) > 1) ||
-      (slowestClockInterval < 33 && Math.abs(slowestClockInterval - activeFeedbackClockInterval) > 5) ||
-      Math.abs(slowestClockInterval - activeFeedbackClockInterval) > 10
-    ) {
-      configureFrameFeedbackClock(slowestClockInterval)
-    }
+    // console.log(this.serverProcessingDuration, this.clientProcessingDuration, this.clientRefreshInterval)
+    // const slowestClockInterval = Math.max(
+    //   this.serverProcessingDuration,
+    //   this.clientProcessingDuration,
+    //   this.clientRefreshInterval,
+    // )
+    // if (
+    //   (slowestClockInterval < 17 && Math.abs(slowestClockInterval - activeFeedbackClockInterval) > 1) ||
+    //   (slowestClockInterval < 33 && Math.abs(slowestClockInterval - activeFeedbackClockInterval) > 5) ||
+    //   Math.abs(slowestClockInterval - activeFeedbackClockInterval) > 10
+    // ) {
+    //   configureFrameFeedbackClock(slowestClockInterval)
+    // }
   }
 
   private updateDelay(clientRefreshInterval: number, clientProcessingDuration: number) {
@@ -102,6 +110,8 @@ export class FrameFeedback {
   }
 
   private sendFrameDoneEvent(frameDoneTimestamp: number, callbackResourceId: number) {
+    // console.log(`sending frame done event for id: ${callbackResourceId}`)
+
     const doneSize = 12 // id+size+opcode+time arg
     const deleteSize = 12 // id+size+opcode+id arg
 

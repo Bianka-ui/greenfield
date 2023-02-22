@@ -75,8 +75,10 @@ export function webRTCSignaling(compositorProxySession: CompositorProxySession):
       }
       signaling.open()
     },
-    message: async (ws: WebSocket<UserData>, message: ArrayBuffer) => {
-      signaling.message(new Uint8Array(message))
+    message: (ws: WebSocket<UserData>, message: ArrayBuffer) => {
+      const target = Buffer.allocUnsafe(message.byteLength)
+      Buffer.from(message).copy(target)
+      signaling.message(target)
     },
     close: (ws: WebSocket<UserData>, code: number, message: ArrayBuffer) => {
       logger.info(`Signaling connection closed. Code: ${code}. Message: ${textDecoder.decode(message)}`)

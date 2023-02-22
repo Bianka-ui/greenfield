@@ -1,5 +1,3 @@
-import type { RTCErrorEvent } from '@koush/wrtc'
-
 export type DataChannelDesc = { type: 'protocol' | 'frame' | 'xwm' | 'feedback'; clientId: string }
 export type FeedbackDataChannelDesc = DataChannelDesc & { surfaceId: number }
 
@@ -12,11 +10,11 @@ export interface ChannelMessage<T extends keyof ChannelMessageTypeMap> {
 export interface ChannelMessageTypeMap {
   isOpen: boolean
   close: undefined
-  send: Buffer
+  send: Uint8Array
   onOpen: undefined
   onClose: undefined
-  onError: RTCErrorEvent
-  onMessage: Buffer
+  onError: Error
+  onMessage: Uint8Array
   create: DataChannelDesc
 }
 
@@ -28,7 +26,7 @@ export function isChannelMessage<T extends keyof ChannelMessageTypeMap>(
 }
 
 export interface Channel {
-  send(buffer: ArrayBufferView): void
+  send(buffer: Uint8Array): void
 
   close(): void
 
@@ -38,9 +36,9 @@ export interface Channel {
 
   onClose(cb: () => void): void
 
-  onError(cb: (err: RTCErrorEvent) => void): void
+  onError(cb: (err: Error) => void): void
 
-  onMessage(cb: (msg: Buffer) => void): void
+  onMessage(cb: (msg: Uint8Array) => void): void
 }
 
 export interface SignalingMessage<T extends keyof SignalingMessageTypeMap> {

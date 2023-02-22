@@ -1,40 +1,43 @@
 import { createLogger } from '../Logger'
-import { RTCIceCandidate, RTCIceServer, RTCPeerConnection, RTCSessionDescriptionInit } from '@koush/wrtc'
 import { randomBytes } from 'crypto'
 import { config } from '../config'
 import type { PeerConnectionState } from './ComWorker'
 import { Signaling } from './Com'
 import { resetPeerConnectionState } from './ComWorker'
+import { RTCIceCandidate, RTCIceServer, RTCPeerConnection, RTCSessionDescription } from 'werift'
 
 const logger = createLogger('compositor-proxy-signaling')
 
 export type DataChannelDesc = { type: 'protocol' | 'frame' | 'xwm' | 'feedback'; clientId: string }
 export type FeedbackDataChannelDesc = DataChannelDesc & { surfaceId: number }
 
-type SignalingMessage =
-  | {
-      type: 'sdp'
-      data: RTCSessionDescriptionInit | null
-      identity: string
-    }
-  | {
-      type: 'ice'
-      data: RTCIceCandidate | null
-      identity: string
-    }
-  | {
-      type: 'identity'
-      data: RTCIceServer[]
-      identity: string
-    }
+type SdpSignalingMessage = {
+  type: 'sdp'
+  data: RTCSessionDescription | null
+  identity: string
+}
+type IceSignalingMessage = {
+  type: 'ice'
+  data: RTCIceCandidate | null
+  identity: string
+}
+type IdentitySignalingMessage = {
+  type: 'identity'
+  data: RTCIceServer[]
+  identity: string
+}
+
+type SignalingMessage = SdpSignalingMessage | IceSignalingMessage | IdentitySignalingMessage
 
 const textDecoder = new TextDecoder()
 const textEncoder = new TextEncoder()
 
 const identity = randomBytes(8).toString('hex')
-const peerIdentity: SignalingMessage = {
+const peerIdentity: IdentitySignalingMessage = {
   type: 'identity',
-  data: config.server.webrtc.iceServers ?? [],
+  // TODO
+  // data: config.server.webrtc.iceServers ?? [],
+  data: [{ urls: 'stun:stun.l.google.com:19302' }],
   identity,
 }
 const peerIdentityMessage = textEncoder.encode(JSON.stringify(peerIdentity))
@@ -114,9 +117,9 @@ export function createSignaling(peerConnectionState: PeerConnectionState): Signa
           if (messageObject.data.type === 'offer') {
             const answer = await peerConnectionState.peerConnection.createAnswer()
             await peerConnectionState.peerConnection.setLocalDescription(answer)
-            const signalingMessage: SignalingMessage = {
+            const signalingMessage: SdpSignalingMessage = {
               type: 'sdp',
-              data: peerConnectionState.peerConnection.localDescription,
+              data: peerConnectionState.peerConnection.localDescription ?? null,
               identity,
             }
             this.onSend(textEncoder.encode(JSON.stringify(signalingMessage)))
@@ -126,32 +129,30 @@ export function createSignaling(peerConnectionState: PeerConnectionState): Signa
     },
   }
 
-  const handleIceCandidate: RTCPeerConnection['onicecandidate'] = (ev) => {
-    if (ev.candidate?.protocol === 'tcp') {
-      return
-    }
-    const signalingMessage: SignalingMessage = {
+  const handleIceCandidate: Parameters<RTCPeerConnection['onIceCandidate']['subscribe']>[0] = (candidate) => {
+    // TODO?
+    // if (ev.protocol === 'tcp') {
+    //   return
+    // }
+    const signalingMessage: IceSignalingMessage = {
       type: 'ice',
-      data: ev.candidate,
+      data: candidate,
       identity,
     }
     signaling.onSend(textEncoder.encode(JSON.stringify(signalingMessage)))
   }
 
-  const handleNegotiationNeeded: RTCPeerConnection['onnegotiationneeded'] = async () => {
+  const handleNegotiationNeeded: Parameters<RTCPeerConnection['onNegotiationneeded']['subscribe']>[0] = async () => {
     try {
       peerConnectionState.makingOffer = true
-      const offer = await peerConnectionState.peerConnection.createOffer({
-        offerToReceiveVideo: false,
-        offerToReceiveAudio: false,
-      })
-      await peerConnectionState.peerConnection.setLocalDescription(offer)
-      const signalingMessage: SignalingMessage = {
+      const offer = await peerConnectionState.peerConnection.createOffer()
+      const signalingMessage: SdpSignalingMessage = {
         type: 'sdp',
-        data: peerConnectionState.peerConnection.localDescription,
+        data: offer,
         identity,
       }
       signaling.onSend(textEncoder.encode(JSON.stringify(signalingMessage)))
+      await peerConnectionState.peerConnection.setLocalDescription(offer)
     } catch (err) {
       console.error(err)
     } finally {
@@ -159,25 +160,28 @@ export function createSignaling(peerConnectionState: PeerConnectionState): Signa
     }
   }
 
-  const handleIceConnectionStateChange: RTCPeerConnection['oniceconnectionstatechange'] = () => {
+  const handleIceConnectionStateChange: Parameters<
+    RTCPeerConnection['iceConnectionStateChange']['subscribe']
+  >[0] = () => {
     if (peerConnectionState.peerConnection.iceConnectionState === 'failed') {
-      peerConnectionState.peerConnection.restartIce()
+      console.log('TODO. restart ice')
+      //peerConnectionState.peerConnection.restartIce()
     }
   }
 
-  peerConnectionState.peerConnection.onicecandidate = handleIceCandidate
-  peerConnectionState.peerConnection.onnegotiationneeded = handleNegotiationNeeded
-  peerConnectionState.peerConnection.oniceconnectionstatechange = handleIceConnectionStateChange
+  peerConnectionState.peerConnection.onNegotiationneeded.subscribe(handleNegotiationNeeded)
+  peerConnectionState.peerConnection.onIceCandidate.subscribe(handleIceCandidate)
+  peerConnectionState.peerConnection.iceConnectionStateChange.subscribe(handleIceConnectionStateChange)
 
   const resetPeerConnection = (killAllClients: boolean) => {
-    peerConnectionState.peerConnection.onicecandidate = null
-    peerConnectionState.peerConnection.onnegotiationneeded = null
-    peerConnectionState.peerConnection.oniceconnectionstatechange = null
+    peerConnectionState.peerConnection.onIceCandidate.allUnsubscribe()
+    peerConnectionState.peerConnection.onNegotiationneeded.allUnsubscribe()
+    peerConnectionState.peerConnection.iceConnectionStateChange.allUnsubscribe()
     signaling.onResetPeerConnection(killAllClients)
     resetPeerConnectionState()
-    peerConnectionState.peerConnection.onicecandidate = handleIceCandidate
-    peerConnectionState.peerConnection.onnegotiationneeded = handleNegotiationNeeded
-    peerConnectionState.peerConnection.oniceconnectionstatechange = handleIceConnectionStateChange
+    peerConnectionState.peerConnection.onNegotiationneeded.subscribe(handleNegotiationNeeded)
+    peerConnectionState.peerConnection.onIceCandidate.subscribe(handleIceCandidate)
+    peerConnectionState.peerConnection.iceConnectionStateChange.subscribe(handleIceConnectionStateChange)
   }
 
   return signaling
