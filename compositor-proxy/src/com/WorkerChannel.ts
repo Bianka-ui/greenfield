@@ -153,7 +153,7 @@ export class SimpleChannel implements Channel {
   }
 }
 
-const checkInterval = 30
+const checkInterval = 20
 const checkListeners: (() => void)[] = []
 
 function check() {

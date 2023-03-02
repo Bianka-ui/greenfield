@@ -151,7 +151,9 @@ export function createSignaling(peerConnectionState: PeerConnectionState): Signa
         data: offer,
         identity,
       }
+
       signaling.onSend(textEncoder.encode(JSON.stringify(signalingMessage)))
+
       await peerConnectionState.peerConnection.setLocalDescription(offer)
     } catch (err) {
       console.error(err)
