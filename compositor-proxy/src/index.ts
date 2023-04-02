@@ -6,6 +6,7 @@ import { config } from './config'
 import { createLogger } from './Logger'
 import { initSurfaceBufferEncoding } from './SurfaceBufferEncoding'
 import { createApp } from './App'
+import { setTimeout } from 'timers/promises'
 
 const compositorSessionId = process.env.COMPOSITOR_SESSION_ID
 
@@ -25,6 +26,7 @@ function deleteStartingFile() {
     // TODO log this?
   })
 }
+
 
 async function main() {
   process.on('uncaughtException', (e) => {
@@ -47,6 +49,7 @@ async function main() {
   })
 
   logger.info(`Compositor proxy started. Listening on ${host}:${port}`)
+  // await setTimeout(10000);
   deleteStartingFile()
 }
 
