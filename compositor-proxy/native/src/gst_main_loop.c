@@ -4,6 +4,9 @@
 #include <stdio.h>
 #include "encoder.h"
 
+#include <pthread.h>
+#include "audio-node.h"
+
 extern void
 do_gst_init();
 
@@ -27,6 +30,8 @@ do_gst_frame_encoder_request_key_unit(struct frame_encoder **frame_encoder_pp);
 extern void
 do_gst_audio_encoder_create(audio_callback_func audio_ready_callback, void *user_data,
                             struct audio_encoder **audio_encoder_pp);
+extern void
+do_gst_audio_encoder_recreate_pipeline(int PW_node_id);
 
 extern void
 do_gst_audio_encoder_encode(struct audio_encoder **audio_encoder_pp);
@@ -51,6 +56,8 @@ enum gf_message_type {
     encoded_frame_finalize_type,
     frame_encoder_request_key_unit_type,
     audio_encoder_create_type,
+    audio_encoder_recreate_pipeline_type,
+    // audio_encoder_get_id_type,
     audio_encoder_encode_type,
     audio_encoder_free_type,
     encoded_audio_finalize_type,
@@ -87,6 +94,9 @@ struct gf_message {
             struct audio_encoder **audio_encoder_pp;
         } audio_encoder_create;
         struct {
+            int PW_node_id;
+        }audio_encoder_recreate_pipeline;
+        struct {
             struct audio_encoder **audio_encoder_pp;
         } audio_encoder_encode;
         struct {
@@ -113,6 +123,13 @@ struct SyncSource {
 
     GAsyncQueue *work_queue;
 };
+
+int pip_node_id;
+int streaming;
+pthread_mutex_t m=PTHREAD_MUTEX_INITIALIZER;	/* mutex lock for buffer */
+pthread_cond_t c_cons=PTHREAD_COND_INITIALIZER; /* consumer waits on this cond var */
+pthread_cond_t c_prod=PTHREAD_COND_INITIALIZER; /* producer waits on this cond var */
+
 
 static gboolean
 syso_prepare(GSource *_source, gint *timeout) {
@@ -213,8 +230,12 @@ main_loop_handle_message(struct gf_message *message) {
                                         message->body.audio_encoder_create.audio_encoder_pp
             );
             break;
+        case audio_encoder_recreate_pipeline_type:
+            do_gst_audio_encoder_recreate_pipeline(message->body.audio_encoder_recreate_pipeline.PW_node_id);
+            break;
         case audio_encoder_encode_type:
             do_gst_audio_encoder_encode(message->body.audio_encoder_encode.audio_encoder_pp);
+            break;
         case audio_encoder_free_type:
             do_gst_audio_encoder_free(message->body.audio_encoder_free.audio_encoder_pp);
             break;
@@ -225,8 +246,11 @@ main_loop_handle_message(struct gf_message *message) {
     return G_SOURCE_CONTINUE;
 }
 
-static void *
-gf_gst_main_loop_ini(gpointer data) {
+
+
+void *consumer(void *param)
+{
+    printf("Consumer: %ld%ld", (long)getpid(), (long)getppid());
     GMainLoop *main = g_main_loop_new(NULL, FALSE);
 
     GSource *worker = sync_source_create();
@@ -243,7 +267,28 @@ gf_gst_main_loop_ini(gpointer data) {
 
     g_main_loop_unref(main);
     g_source_destroy(worker);
+}
 
+static void *
+gf_gst_main_loop_ini(gpointer data) {
+
+	pthread_t tid1, tid2;		/* thread identifiers */
+	int i;
+
+	/* create the threads; may be any number, in general */
+	if (pthread_create(&tid1,NULL,producer,NULL) != 0) {
+		fprintf (stderr, "Unable to create producer thread\n");
+		exit (1);
+	}
+	if (pthread_create(&tid2,NULL,consumer,NULL) != 0) {
+		fprintf (stderr, "Unable to create consumer thread\n");
+		exit (1);
+	}
+    printf("Parent: tid1 %lu, tid2 %lu\n",tid1,tid2);
+	/* wait for created thread to exit */
+	pthread_join(tid1,NULL);
+	pthread_join(tid2,NULL);
+	printf ("Parent quiting\n");
     return NULL;
 }
 
@@ -279,7 +324,7 @@ int
 frame_encoder_encode(struct frame_encoder **frame_encoder_pp, struct wl_resource *buffer_resource, uint32_t buffer_content_serial,
                      uint32_t buffer_creation_serial) {
     struct gf_message *message = g_new0(struct gf_message, 1);
-
+printf("\n \n FREAME ENC \n\n");
     message->type = frame_encoder_encode_type;
     message->body.frame_encoder_encode.frame_encoder_pp = frame_encoder_pp;
     message->body.frame_encoder_encode.buffer_resource = buffer_resource;
@@ -337,10 +382,22 @@ audio_encoder_create(audio_callback_func audio_ready_callback, void *user_data,
     return send_message(message);
 }
 
+void
+audio_encoder_recreate_pipeline(int PW_node_id) {
+    struct gf_message *message = g_new0(struct gf_message, 1);
+     
+    message->type = audio_encoder_recreate_pipeline_type;
+    message->body.audio_encoder_recreate_pipeline.PW_node_id = PW_node_id; 
+   
+
+    send_message(message);
+}
+
+
 int
 audio_encoder_encode(struct audio_encoder **audio_encoder_pp) {
     struct gf_message *message = g_new0(struct gf_message, 1);
-
+printf("\n \n AUDIO ENC \n\n");
     message->type = audio_encoder_encode_type;
     message->body.audio_encoder_encode.audio_encoder_pp = audio_encoder_pp;
 

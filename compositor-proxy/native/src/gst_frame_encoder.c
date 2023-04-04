@@ -1553,6 +1553,7 @@ void do_gst_frame_encoder_encode(struct frame_encoder **frame_encoder_pp, struct
     encoding_result->props.buffer_content_serial = buffer_content_serial;
     encoding_result->props.buffer_creation_serial = buffer_creation_serial;
     encoding_result->props.buffer_id = wl_resource_get_id(buffer_resource);
+    printf("encoding Frame");
     gst_frame_encoder_encode(encoder->impl, buffer_resource, encoding_result);
 }
 
