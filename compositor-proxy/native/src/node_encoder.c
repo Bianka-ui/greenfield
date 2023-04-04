@@ -216,6 +216,7 @@ encodeFrame(napi_env env, napi_callback_info info) {
 
     buffer_resource = wl_client_get_object(node_frame_encoder->client, buffer_id);
 
+    printf("CALLING IF FRAME \n \n ");
     if (frame_encoder_encode(&node_frame_encoder->encoder, buffer_resource, buffer_content_serial, buffer_creation_serial) == -1) {
         NAPI_CALL(env, napi_throw_error((env), NULL, "Can't encode frame buffer."))
         NAPI_CALL(env, napi_get_undefined(env, &return_value))
