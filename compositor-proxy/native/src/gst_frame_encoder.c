@@ -606,6 +606,7 @@ gst_frame_encoder_pipeline_config(struct gst_frame_encoder_pipeline *gst_frame_e
 static inline void
 gst_frame_encoder_pipeline_destroy(struct gst_frame_encoder_pipeline *gst_frame_encoder_pipeline)
 {
+  
     GstAppSrc *app_src;
     GstPad *pad;
     GstBus *bus = gst_pipeline_get_bus(GST_PIPELINE(gst_frame_encoder_pipeline->pipeline));
@@ -775,7 +776,7 @@ gst_frame_encoder_pipeline_setup_bus_listeners(struct gst_frame_encoder_pipeline
 static GstPadProbeReturn
 gst_frame_encoder_pipeline_app_src_have_data(GstPad *pad, GstPadProbeInfo *info, gpointer user_data)
 {
-    printf("HAS DATA\n");
+   
     struct gst_frame_encoder_pipeline *gst_frame_encoder_pipeline = user_data;
     GstBuffer *buffer = gst_pad_probe_info_get_buffer(info);
     GstVideoMeta *video_meta = gst_buffer_get_video_meta(buffer);
@@ -1553,7 +1554,8 @@ void do_gst_frame_encoder_encode(struct frame_encoder **frame_encoder_pp, struct
     encoding_result->props.buffer_content_serial = buffer_content_serial;
     encoding_result->props.buffer_creation_serial = buffer_creation_serial;
     encoding_result->props.buffer_id = wl_resource_get_id(buffer_resource);
- 
+
+
     gst_frame_encoder_encode(encoder->impl, buffer_resource, encoding_result);
 }
 
