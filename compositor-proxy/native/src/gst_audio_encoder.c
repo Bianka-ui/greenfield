@@ -152,7 +152,7 @@ gst_new_encoded_audio_sample(GstAppSink *appsink, gpointer user_data)
     gst_buffer_map(encoding_result->sample.buffer, &encoding_result->sample.info, GST_MAP_READ);
 
     encoded_chunk = audio_encoding_result_to_encoded_chunk(encoding_result);
-
+    printf("TAAAKE VELKE TO JE: %d", sizeof(encoded_chunk));
     if (encoding_result->sample.buffer)
     {
         gst_buffer_unmap(encoding_result->sample.buffer, &encoding_result->sample.info);
@@ -175,7 +175,7 @@ static GstAppSinkCallbacks encoded_audio_sample_callback = {
 // TODO set the pipewire node id on the pipewiresrc element
 // TODO more/less/other gstreamer elements?
 static const char *audio_pipeline = "pipewiresrc name=pw_src ! "
-                                    "rawaudioparse format=pcm pcm-format=f32le sample-rate=48000 num-channels=2 ! "
+                                    "rawaudioparse format=pcm pcm-format=f32le sample-rate=44100 num-channels=2 ! "
                                     "audioresample ! "
                                     "audioconvert ! "
                                     "voaacenc ! "
