@@ -37,6 +37,7 @@ export function createEncodedFrame(u8Buffer: Uint8Array): EncodedFrame {
     throw new Error(`Received invalid encoding type, code = ${encodingTypeCode}`)
   }
   const encodingType = EncodingTypes[encodingTypeCode]
+
   offset += 4
 
   const width = dataView.getUint32(offset, true)
@@ -60,7 +61,7 @@ export function createEncodedFrame(u8Buffer: Uint8Array): EncodedFrame {
   offset += 4
   const alpha =
     alphaLength === 0 ? undefined : new Uint8Array(u8Buffer.buffer, u8Buffer.byteOffset + offset, alphaLength)
-
+ 
   return {
     contentSerial,
     mimeType: encodingType,

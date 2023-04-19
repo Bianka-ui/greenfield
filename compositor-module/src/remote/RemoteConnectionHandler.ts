@@ -32,8 +32,10 @@ import { deliverContentToBufferStream } from './BufferStream'
 import { createRemoteInputOutput } from './RemoteInputOutput'
 import type { Channel } from './Channel'
 import { deliverContentToAudioStream } from './AudioStream'
+import {AACPlayer} from './AACPlayer'
 
 const alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567' as const
+let player = new AACPlayer();
 
 export type RemoteClientContext = {
   clientEncoderFeedback: ClientEncodersFeedback
@@ -175,10 +177,10 @@ export class RemoteConnectionHandler {
       if (client.connection.closed) {
         return
       }
+      // this.session.logger.info("[FRAME]", message);
       deliverContentToBufferStream(client, message.buffer)
     }
   }
-
   setupAudioChannel(client: Client, audioChannel: Channel) {
     audioChannel.onOpen = () => {
       this.session.logger.info("[Dataaaaaaaaaaaaaaa]"); 
@@ -189,8 +191,14 @@ export class RemoteConnectionHandler {
 
         return
       }
-      this.session.logger.info("[Ta zavola sa dokelu daco?]", message, client);
-      deliverContentToAudioStream(client, message.buffer)
+      // this.session.logger.info("[Ta zavola sa dokelu daco00000?]", message);
+  
+      // this.session.logger.info("[Ta zavola sa dokelu daco?]", message.buffer);
+      // deliverContentToAudioStream(client, message.buffer)
+      let shifted_buffer = new Uint8Array(message.buffer, 8)
+      // this.session.logger.info("[Ta zavola sa?]", shifted_buffer);
+
+      player.decodeAndPlay(shifted_buffer)
     }
   }
 
