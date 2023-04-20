@@ -23,6 +23,7 @@ struct audio_encoding_result
     {
         enum audio_encoding_type audio_encoding_type;
         // TODO extra metadata required for decoding can go here
+        // uint32_t app_pw_id; //id from pipewire of app that belongs to encoder's pipeline
     } props;
     struct
     {
@@ -174,13 +175,22 @@ static GstAppSinkCallbacks encoded_audio_sample_callback = {
 
 // TODO set the pipewire node id on the pipewiresrc element
 // TODO more/less/other gstreamer elements?
+// static const char *audio_pipeline = "pipewiresrc name=pw_src ! "
+//                                     "rawaudioparse format=pcm pcm-format=f32le sample-rate=48000 num-channels=2 ! "
+//                                     "audioresample ! "
+//                                     "audioconvert ! "
+//                                     "voaacenc ! "
+//                                     "appsink name=sink ";
+
 static const char *audio_pipeline = "pipewiresrc name=pw_src ! "
-                                    "rawaudioparse format=pcm pcm-format=f32le sample-rate=44100 num-channels=2 ! "
+                                    "audio/x-raw,format=F32LE,channels=2,rate=48000 ! "
+                                    "rawaudioparse format=pcm pcm-format=f32le sample-rate=48000 num-channels=2 ! "
                                     "audioresample ! "
                                     "audioconvert ! "
-                                    "voaacenc ! "
+                                    "audio/x-raw,format=S16LE,layout=interleaved,rate=48000,channels=2 ! "
+                                    "voaacenc hard-resync=true ! "
+                                    "audio/mpeg,rate=48000,channels=2,stream-format=adts,base-profile=lc ! "
                                     "appsink name=sink ";
-
 static inline void
 gst_audio_encoder_pipeline_setup_bus_listeners(struct gst_audio_encoder_pipeline *gst_audio_encoder_pipeline)
 {

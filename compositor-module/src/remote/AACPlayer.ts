@@ -1,14 +1,16 @@
 const audioContext = new AudioContext();
 // let audioBufferSource: AudioBufferSourceNode| null ;
 
+
 export class AACPlayer {
   private audioContext: AudioContext;
   private audioDecoder: AudioDecoder;
   private bufferQueue: AudioBuffer[] = [];
+  private nextBufferTime: number; 
 
   constructor() {
     this.audioContext = new AudioContext();
-   
+    this.nextBufferTime = this.audioContext.currentTime + 1;
     this.audioDecoder = new AudioDecoder({
       output: (audioData: AudioData) => {
         this.handleDecodedAudio(audioData);
@@ -25,6 +27,7 @@ export class AACPlayer {
     const numberOfChannels = audioData.numberOfChannels;
     const length = audioData.numberOfFrames;
     const sampleRate = audioData.sampleRate;
+    console.log("data ", audioData.sampleRate, " Kontext " ,audioContext.sampleRate);
     const audioBuffer = this.audioContext.createBuffer(numberOfChannels, length, sampleRate);
     
     for (let channel = 0; channel < numberOfChannels; channel++) {
@@ -46,14 +49,15 @@ export class AACPlayer {
     const audioBuffer = this.bufferQueue.shift()!;
     const bufferSource = this.audioContext.createBufferSource();
 
-    bufferSource.playbackRate.value = 0.5;
+    // bufferSource.playbackRate.value = 1;
     bufferSource.buffer = audioBuffer;
 
 
     console.log(bufferSource.buffer );
     bufferSource.connect(this.audioContext.destination);
 
-    bufferSource.start();
+    bufferSource.start(this.nextBufferTime);
+    this.nextBufferTime += audioBuffer.duration;
 
     bufferSource.addEventListener("ended", () => {
       this.playNextBuffer();
@@ -64,9 +68,9 @@ export class AACPlayer {
     
  
     this.audioDecoder.configure({
-      codec: "mp4a.40.5",
+      codec: "mp4a.40.05",
       // aac: { format: 'adts' },
-        sampleRate: 44100,
+        sampleRate: 48000,
         numberOfChannels: 2,
     
       });
